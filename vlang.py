@@ -27,6 +27,10 @@ class IllegalCharError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Illegal Character", details)
 
+class ExpectedCharError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Expected Character", details)
+
 class InvalidSyntaxError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Invalid Syntax", details)
@@ -90,14 +94,27 @@ TT_MUL = "MUL"
 TT_DIV = "DIV"
 TT_POW = "POW"
 
+TT_LBRACE = "LBRACE"
+TT_RBRACE = "RBRACE"
 TT_LPAREN = "LPAREN"
 TT_RPAREN = "RPAREN"
 TT_EQ = "EQ"
 TT_VAR = "VAR"
 
+TT_EE = "EE"
+TT_NE = "NE"
+TT_LT = "LT"
+TT_GT = "GT"
+TT_LTE = "LTE"
+TT_GTE = "GTE"
+
 TT_EOF = "EOF"
 
-KEYWORDS = []
+KEYWORDS = [
+    "and",
+    "or",
+    "not"
+]
 
 class Token:
     def __init__(self, type_, value=None, pos_start=None, pos_end=None):
@@ -154,19 +171,33 @@ class Lexer:
             elif self.current_char == "/":
                 tokens.append(Token(TT_DIV, pos_start=self.pos))
                 self.advance()
-
+            
+            elif self.current_char == "{":
+                tokens.append(Token(TT_LBRACE, pos_start=self.pos))
+                self.advance()
+            elif self.current_char == "}":
+                tokens.append(Token(TT_RBRACE, pos_start=self.pos))
+                self.advance()
             elif self.current_char == "(":
                 tokens.append(Token(TT_LPAREN, pos_start=self.pos))
                 self.advance()
             elif self.current_char == ")":
                 tokens.append(Token(TT_RPAREN, pos_start=self.pos))
                 self.advance()
-            elif self.current_char == "=":
-                tokens.append(Token(TT_EQ, pos_start=self.pos))
-                self.advance()
             elif self.current_char == "@":
                 tokens.append(Token(TT_VAR, pos_start=self.pos))
                 self.advance()
+
+            elif self.current_char == "!":
+                tok, error = self.make_ne()
+                if error: return [], error
+                tokens.append(tok)
+            elif self.current_char == "=":
+                tokens.append(self.make_eq())
+            elif self.current_char == "<":
+                tokens.append(self.make_lt())
+            elif self.current_char == ">":
+                tokens.append(self.make_gt())
             else:
                 pos_start = self.pos.copy()
                 char = self.current_char
@@ -175,11 +206,52 @@ class Lexer:
         
         tokens.append(Token(TT_EOF, pos_start=self.pos))
         return tokens, None
-    
+
+    def make_ne(self):
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == "=":
+            self.advance()
+            return Token(TT_NE, pos_start=pos_start, pos_end=self.pos), None
+        
+        self.advance()
+        return None, ExpectedCharError(pos_start, self.pos, "'=' (after '!')")
+
+    def make_eq(self):
+        tok_type = TT_EQ
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == "=":
+            self.advance()
+            tok_type = TT_EE
+        return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
+    def make_lt(self):
+        tok_type = TT_LT
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == "=":
+            self.advance()
+            tok_type = TT_LTE
+        return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
+    def make_gt(self):
+        tok_type = TT_GT
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == "=":
+            self.advance()
+            tok_type = TT_GTE
+        return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
     def make_pow(self):
         pos_start = self.pos.copy()
         mul_count = 0
-        
+
         while self.current_char != None and self.current_char == "*":
             if self.current_char == "*":
                 if mul_count == 2: break
@@ -374,6 +446,29 @@ class Parser:
     def term(self):
         return self.bin_op(self.factor, (TT_MUL, TT_DIV))
 
+    def comp_expr(self):
+        res = ParseResult()
+
+        if self.current_tok.matches(TT_KEYWORD, "not"):
+            op_tok =  self.current_tok
+            res.register_advancement()
+            self.advance()
+
+            node =  res.register(self.comp_expr())
+            if res.error: return res
+            return res.success(UnaryOpNode(op_tok, node))
+
+        node = res.register(self.bin_op(self.arith_expr, (TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE)))
+        if res.error:
+            return res.failure(InvalidSyntaxError(
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                "Expected int, float, identifier, '+', '-', '(', 'not'"
+            ))
+        return res.success(node)
+
+    def arith_expr(self):
+        return self.bin_op(self.term, (TT_PLUS, TT_MINUS))
+
     def expr(self):
         res = ParseResult()
 
@@ -400,7 +495,7 @@ class Parser:
             if res.error: return res
             return res.success(VarAssignNode(var_name, expr))
 
-        node = res.register(self.bin_op(self.term, (TT_PLUS, TT_MINUS)))
+        node = res.register(self.bin_op(self.comp_expr, ((TT_KEYWORD, "and"), (TT_KEYWORD, "or"))))
         if res.error:
             return res.failure(InvalidSyntaxError(
                 self.current_tok.pos_start, self.current_tok.pos_end,
@@ -416,7 +511,7 @@ class Parser:
         left = res.register(func_a())
         if res.error: return res
 
-        while self.current_tok.type in ops:
+        while self.current_tok.type in ops or (self.current_tok.type, self.current_tok.value) in ops:
             op_tok = self.current_tok
             res.register_advancement()
             self.advance()
@@ -487,6 +582,34 @@ class Number:
     def __pow__(self, other):
         if isinstance(other, Number):
             return Number(self.value ** other.value).set_context(self.context), None
+
+    def __CompareEE__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value ==  other.value)).set_context(self.context), None
+    def __CompareNE__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value !=  other.value)).set_context(self.context), None
+    def __CompareLT__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value <  other.value)).set_context(self.context), None
+    def __CompareGT__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value >  other.value)).set_context(self.context), None
+    def __CompareLTE__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value <=  other.value)).set_context(self.context), None
+    def __CompareGTE__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value >=  other.value)).set_context(self.context), None
+    
+    def __and__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value and other.value)).set_context(self.context), None
+    def __or__(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value or other.value)).set_context(self.context), None
+    def __not__(self):
+        return Number(1 if self.value == 0 else 0).set_context(self.context), None
 
     def copy(self):
         copy = Number(self.value)
@@ -580,6 +703,24 @@ class Interpreter:
         elif node.op_tok.type == TT_POW:
             result, error = left.__pow__(right)
 
+        elif node.op_tok.type == TT_EE:
+            result, error = left.__CompareEE__(right)
+        elif node.op_tok.type == TT_NE:
+            result, error = left.__CompareNE__(right)
+        elif node.op_tok.type == TT_LT:
+            result, error = left.__CompareLT__(right)
+        elif node.op_tok.type == TT_GT:
+            result, error = left.__CompareGT__(right)
+        elif node.op_tok.type == TT_LTE:
+            result, error = left.__CompareLTE__(right)
+        elif node.op_tok.type == TT_GTE:
+            result, error = left.__CompareGTE__(right)
+
+        elif node.op_tok.matches(TT_KEYWORD, "and"):
+            result, error = left.__and__(right)
+        elif node.op_tok.matches(TT_KEYWORD, "or"):
+            result, error = left.__or__(right)
+
         if error:
             return res.failure(error)
         else:
@@ -593,6 +734,8 @@ class Interpreter:
 
         if node.op_tok.type == TT_MINUS:
             number, error = number.__mul__(Number(-1))
+        elif node.op_tok.matches(TT_KEYWORD, "not"):
+            number, error = number.__not__()
         
         if error:
             return res.failure(error)
@@ -603,6 +746,8 @@ class Interpreter:
 
 global_symbol_table = SymbolTable()
 global_symbol_table.set("null", Number(0))
+global_symbol_table.set("true", Number(1))
+global_symbol_table.set("false", Number(0))
 
 def run(fn, text):
     lexer = Lexer(fn, text)
