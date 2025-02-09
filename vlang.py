@@ -1157,7 +1157,7 @@ class Parser:
             if newline_count == 0:
                 more_statements = False
 
-            if not more_statements: break
+            if not more_statements or self.current_tok.type == TT_RBRACE: break
             statement = res.try_register(self.statement())
             if not statement:
                 self.reverse(res.reverse_to_count)
