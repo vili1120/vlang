@@ -1,0 +1,12 @@
+@RUN = true
+
+while RUN {
+  @text = input("cmd> ")
+
+  if text == "exit" {
+    @RUN = false
+  } elif text == "help" {
+    print("exit - exits the program")
+    print("help - shows this menu")
+  }
+}

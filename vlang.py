@@ -188,6 +188,8 @@ class Lexer:
             elif self.current_char in ";\n":
                 tokens.append(Token(TT_NEWLINE, pos_start=self.pos))
                 self.advance()
+            elif self.current_char == "#":
+                self.skip_comment()
 
             elif self.current_char == "+":
                 tokens.append(Token(TT_PLUS, pos_start=self.pos))
@@ -245,6 +247,14 @@ class Lexer:
         
         tokens.append(Token(TT_EOF, pos_start=self.pos))
         return tokens, None
+
+    def skip_comment(self):
+        self.advance()
+
+        while self.current_char != "\n":
+            self.advance()
+
+        self.advance()
 
     def make_string(self):
         string = ""
@@ -1585,9 +1595,17 @@ class BuiltInFunction(BaseFunction):
     execute_print_ret.arg_names = ["value"]
 
     def execute_input(self, exec_ctx):
-        text = input()
+        prompt = exec_ctx.symbol_table.get("prompt")
+        if not isinstance(prompt, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Argument should be a string",
+                exec_ctx
+            ))
+
+        text = input(prompt.value)
         return RTResult().success(String(text))
-    execute_input.arg_names = []
+    execute_input.arg_names = ["prompt"]
 
     def execute_int(self, exec_ctx):
         try:
@@ -1701,6 +1719,48 @@ class BuiltInFunction(BaseFunction):
         return RTResult().success(Number.null)
     execute_extend.arg_names = ["listA", "listB"]
 
+    def execute_len(self, exec_ctx):
+        obj = exec_ctx.symbol_table.get("obj")
+
+        if not isinstance(obj, List):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Argument must be a list",
+                exec_ctx
+            ))
+        return RTResult().success(Number(len(obj.elements)))
+    execute_len.arg_names = ["obj"]
+
+    def execute_run(self, exec_ctx):
+        fn = exec_ctx.symbol_table.get("fn")
+
+        if not isinstance(fn, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Argument should be a string",
+                exec_ctx
+            ))
+        fn = fn.value
+        try:
+            with open(fn, "r") as f:
+                script = ";".join(line.rstrip() for line in f)
+        except Exception as e:
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                f"Failed to load \"{fn}\"\n" + str(e),
+                exec_ctx
+            ))
+        _, error = run(fn, script)
+
+        if error:
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                f"Failed to finish executing script \"{fn}\"\n" + error.as_string(),
+                exec_ctx
+            ))
+        return RTResult().success(Number.null)
+    execute_run.arg_names = ["fn"]
+
 BuiltInFunction.print = BuiltInFunction("print")
 BuiltInFunction.print_ret = BuiltInFunction("print_ret")
 
@@ -1715,6 +1775,9 @@ BuiltInFunction.isinstance = BuiltInFunction("isinstance")
 BuiltInFunction.append = BuiltInFunction("append")
 BuiltInFunction.pop = BuiltInFunction("pop")
 BuiltInFunction.extend = BuiltInFunction("extend")
+
+BuiltInFunction.len = BuiltInFunction("len")
+BuiltInFunction.run = BuiltInFunction("run")
 
 class List(Value):
     def __init__(self, elements):
@@ -2106,6 +2169,9 @@ global_symbol_table.set("exit", BuiltInFunction.exit)
 global_symbol_table.set("append", BuiltInFunction.append)
 global_symbol_table.set("pop", BuiltInFunction.pop)
 global_symbol_table.set("extend", BuiltInFunction.extend)
+
+global_symbol_table.set("len", BuiltInFunction.len)
+global_symbol_table.set("run", BuiltInFunction.run)
 
 
 def run(fn, text):
