@@ -1609,7 +1609,7 @@ class BuiltInFunction(BaseFunction):
 
     def execute_int(self, exec_ctx):
         try:
-            return RTResult().success(Number(int(exec_ctx.symbol_table.get("value").value))), None
+            return RTResult().success(Number(int(exec_ctx.symbol_table.get("value").value)))
         except:
             return RTResult().failure(RTError(
                 self.pos_start, self.pos_end,

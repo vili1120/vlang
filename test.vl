@@ -1,5 +1,12 @@
 @RUN = true
 
+def add() {
+  @A=int(input("a> "))
+  @B=int(input("b> "))
+
+  return A + B
+}
+
 while RUN {
   @text = input("cmd> ")
 
@@ -8,5 +15,7 @@ while RUN {
   } elif text == "help" {
     print("exit - exits the program")
     print("help - shows this menu")
+  } elif text == "add" {
+    print(add())
   }
 }
