@@ -1,4 +1,7 @@
+# Define run var #
 @RUN = true
+
+# Functions #
 
 def add() {
   @A=int(input("a> "))
@@ -7,15 +10,21 @@ def add() {
   return A + B
 }
 
-while RUN {
-  @text = input("cmd> ")
+# Main function #
 
-  if text == "exit" {
-    @RUN = false
-  } elif text == "help" {
-    print("exit - exits the program")
-    print("help - shows this menu")
-  } elif text == "add" {
-    print(add())
+def main() {
+  while RUN {
+    @text = input("cmd> ")
+
+    if text == "exit" {
+      @RUN = false
+    } elif text == "help" {
+      print("exit - exits the program")
+      print("add - adds two numbers together")
+      print("help - shows this menu")
+    } elif text == "add" {
+      print(add())
+    }
   }
 }
+main()

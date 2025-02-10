@@ -251,7 +251,7 @@ class Lexer:
     def skip_comment(self):
         self.advance()
 
-        while self.current_char != "\n":
+        while self.current_char != "#":
             self.advance()
 
         self.advance()
