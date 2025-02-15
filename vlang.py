@@ -1860,6 +1860,12 @@ class String(Value):
         else:
             return None, Value.illegal_operation(self, other)
 
+    def __CompareNE__(self, other):
+        if isinstance(other, String):
+            return Number(1 if self.value != other.value else 0), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
     def __true__(self):
         return len(self.value) > 0
 
